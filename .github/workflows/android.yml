@@ -1,8 +1,11 @@
-name: Build Android APK
+name: Build Guardian Monsters Android APK
+
 on:
-  push:
-    branches: ["main", "master"]
   workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/android.yml"
 
 permissions:
   contents: read
@@ -11,33 +14,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
+      - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Extract updated Android project ZIP
-        run: |
-          mkdir project
-          unzip -o pokemon-rpg-android-clover-valley-map.zip -d project
+      - name: Checkout open-source RPG base
+        uses: actions/checkout@v4
+        with:
+          repository: lucidtanooki/guardian_monsters
+          ref: main
+          path: upstream/guardian_monsters
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "11"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: |
+          sdkmanager "platforms;android-30" "build-tools;30.0.3"
+          yes | sdkmanager --licenses
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "6.7.1"
 
-      - name: Build debug APK
-        run: gradle --no-daemon -p project :app:assembleDebug
+      - name: Build Android APK
+        working-directory: upstream/guardian_monsters/GuardianMonsters
+        run: gradle --no-daemon :android:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rpg-debug-apk
-          path: project/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: guardian-monsters-android-debug
+          path: upstream/guardian_monsters/GuardianMonsters/android/build/outputs/apk/debug/android-debug.apk
+          if-no-files-found: warn
           retention-days: 14
-          
