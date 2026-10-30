@@ -361,3 +361,93 @@ for bundle, values in supplemental.items():
             out.write(line + "\n")
 
 print("Overlay aplicado: identidade, textos de interface, batalha, itens, ataques, criaturas e diálogos dos mapas em pt-BR.")
+
+
+
+# Import the supplied Clover Valley art pack into the APK without changing the upstream submodule.
+from zipfile import ZipFile
+from PIL import Image, ImageOps
+
+clover_archive = Path("Clover Valley V2 Free.zip")
+clover_prefix = "Clover Valley V2 Free/"
+clover_assets = root / "android/assets/clover_valley"
+clover_assets.mkdir(parents=True, exist_ok=True)
+with ZipFile(clover_archive) as zf:
+    for info in zf.infolist():
+        if info.is_dir() or not info.filename.startswith(clover_prefix):
+            continue
+        relative = Path(info.filename[len(clover_prefix):])
+        if ".." in relative.parts:
+            raise ValueError(f"Unsafe archive path: {info.filename}")
+        target = clover_assets / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(info) as src, target.open("wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+# Preserve the supplied map previews as references inside the app package.
+map_archive = Path("pokemon-rpg-android-clover-valley-map.zip")
+with ZipFile(map_archive) as zf:
+    for preview_name in ("map_preview.png", "map_preview2.png"):
+        matches = [n for n in zf.namelist() if n.endswith("/" + preview_name) or n == preview_name]
+        if matches:
+            target = clover_assets / preview_name
+            with zf.open(matches[0]) as src, target.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+# Build the player's directional atlas from the user's supplied six-frame Clover walk sheets.
+walk_dir = clover_assets / "Character/Boy/Walk"
+direction_sources = {
+    "n": ("walk_up.png", False),
+    "e": ("walk_side.png", False),
+    "s": ("walk_down.png", False),
+    "w": ("walk_side.png", True),
+}
+directions = []
+for direction, (filename, mirror) in direction_sources.items():
+    sheet = Image.open(walk_dir / filename).convert("RGBA")
+    if sheet.width % 6 != 0 or sheet.height != 64:
+        raise ValueError(f"Unexpected Clover sprite sheet dimensions: {filename} {sheet.size}")
+    frames = []
+    for frame_index in range(6):
+        frame = sheet.crop((frame_index * 64, 0, (frame_index + 1) * 64, 64))
+        bounds = frame.getbbox()
+        if not bounds:
+            raise ValueError(f"Empty sprite frame: {filename} #{frame_index}")
+        sprite = frame.crop(bounds)
+        if mirror:
+            sprite = ImageOps.mirror(sprite)
+        if sprite.width > 16 or sprite.height > 32:
+            sprite.thumbnail((16, 32), Image.Resampling.NEAREST)
+        cell = Image.new("RGBA", (16, 32), (0, 0, 0, 0))
+        cell.alpha_composite(sprite, ((16 - sprite.width) // 2, 32 - sprite.height))
+        frames.append(cell)
+    directions.append((direction, frames))
+
+hero_image = Image.new("RGBA", (433, 34), (0, 0, 0, 0))
+atlas_lines = [
+    "hero.png",
+    "format: RGBA8888",
+    "filter: Nearest,Nearest",
+    "repeat: none",
+]
+frame_number = 0
+for direction, frames in directions:
+    for index, frame in enumerate(frames, start=1):
+        x = 1 + frame_number * 18
+        y = 1
+        hero_image.alpha_composite(frame, (x, y))
+        atlas_lines.extend([
+            direction,
+            "  rotate: false",
+            f"  xy: {x}, {y}",
+            "  size: 16, 32",
+            "  orig: 16, 32",
+            "  offset: 0, 0",
+            f"  index: {index}",
+        ])
+        frame_number += 1
+
+spritesheet_dir = root / "android/assets/spritesheets"
+hero_image.save(spritesheet_dir / "hero.png")
+(spritesheet_dir / "hero.pack").write_text("\\n".join(atlas_lines) + "\\n", encoding="utf-8")
+print("Clover Valley imported; player atlas now uses six directional walk frames from the supplied sprites.")
