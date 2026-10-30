@@ -14,15 +14,10 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v4
-
-      - name: Checkout open-source RPG base
+      - name: Checkout project and game source/assets
         uses: actions/checkout@v4
         with:
-          repository: lucidtanooki/guardian_monsters
-          ref: main
-          path: upstream/guardian_monsters
+          submodules: recursive
 
       - name: Set up Java for Android SDK tools
         uses: actions/setup-java@v4
@@ -53,13 +48,13 @@ jobs:
           gradle-version: "6.7.1"
 
       - name: Build Android APK
-        working-directory: upstream/guardian_monsters/GuardianMonsters
+        working-directory: GuardianMonsters/GuardianMonsters
         run: gradle --no-daemon :android:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: guardian-monsters-android-debug
-          path: upstream/guardian_monsters/GuardianMonsters/android/build/outputs/apk/**/*.apk
+          path: GuardianMonsters/GuardianMonsters/android/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
