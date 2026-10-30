@@ -19,6 +19,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Apply game identity and Brazilian Portuguese overlay
+        run: python3 scripts/apply_customizations.py
+
       - name: Set up Java for Android SDK tools
         uses: actions/setup-java@v4
         with:
