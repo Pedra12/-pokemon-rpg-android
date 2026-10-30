@@ -19,7 +19,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Apply game identity and Brazilian Portuguese overlay
+      - name: Install Pillow for sprite atlas generation
+        run: python3 -m pip install --user pillow
+
+      - name: Apply game identity, pt-BR text and Clover Valley sprites
         run: python3 scripts/apply_customizations.py
 
       - name: Set up Java for Android SDK tools
