@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply the first safe Brazilian Portuguese and release-mode overlay to Guardian Monsters."""
 from pathlib import Path
+import shutil
 
 root = Path("GuardianMonsters/GuardianMonsters")
 constant = root / "core/src/de/limbusdev/guardianmonsters/Constant.java"
@@ -449,5 +450,5 @@ for direction, frames in directions:
 
 spritesheet_dir = root / "android/assets/spritesheets"
 hero_image.save(spritesheet_dir / "hero.png")
-(spritesheet_dir / "hero.pack").write_text("\\n".join(atlas_lines) + "\\n", encoding="utf-8")
+(spritesheet_dir / "hero.pack").write_text("\n".join(atlas_lines) + "\n", encoding="utf-8")
 print("Clover Valley imported; player atlas now uses six directional walk frames from the supplied sprites.")
