@@ -1,0 +1,3 @@
+[submodule "GuardianMonsters"]
+	path = GuardianMonsters
+	url = https://github.com/lucidtanooki/guardian_monsters.git
