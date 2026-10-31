@@ -76,12 +76,26 @@ jobs:
               source = source.replace(old, new, 1)
           config.write_text(source)
 
+          # Buildozer launches main.py; Tuxemon's desktop entry point is run_tuxemon.py.
+          Path("main.py").write_text(
+              "from run_tuxemon import launch_game\\n\\n"
+              "if __name__ == '__main__':\\n"
+              "    launch_game([])\\n",
+              encoding="utf-8",
+          )
+
           spec = Path("buildozer.spec")
           build = spec.read_text()
           build = build.replace("android.api = 27", "android.api = 35")
           build = build.replace("android.ndk = 19c", "android.ndk = 28c")
           build = build.replace("android.arch = armeabi-v7a", "android.arch = arm64-v8a")
           build = build.replace("android.skip_update = True", "android.skip_update = False")
+          build = build.replace(
+              "source.include_exts = py,png,json,tmx,tsx,po,gif,cfg,bmp,ico,xml,tiff,ogg,wav,mp3,ttf",
+              "source.include_exts = py,png,json,tmx,tsx,po,gif,cfg,bmp,ico,xml,tiff,ogg,wav,mp3,ttf,yaml,yml,mid,world,jpg,otf,ini",
+          )
+          if "source.include_exts = " not in build or "yaml,yml" not in build:
+              raise SystemExit("Tuxemon YAML game data is not included in the APK")
           spec.write_text(build)
 
           # The Android port must use pygame-ce, not the legacy pygame recipe.
@@ -169,7 +183,7 @@ jobs:
           build = spec.read_text()
           build = build.replace(
               "requirements = sdl2,openssl,libffi,python3,setuptools,pygame,babel,pytmx,pyscroll,natsort,tuxemon",
-              "requirements = sdl2,openssl,libffi,python3,setuptools,pygame-ce,babel,websockets,pillow,packaging,pytmx,pyscroll,natsort,PyYAML,requests,prompt_toolkit,pydantic==2.12.4,pydantic-core,pygame-menu-ce,tuxemon",
+              "requirements = sdl2,openssl,libffi,python3,setuptools,pygame-ce,babel,websockets,pillow,packaging,pytmx,pyscroll,natsort,PyYAML,requests,prompt_toolkit,pydantic==2.12.4,pydantic-core,pygame-menu-ce",
           )
           build = build.replace("p4a.branch = master", "p4a.source_dir = ../python-for-android")
           required = [
