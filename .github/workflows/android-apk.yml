@@ -78,9 +78,9 @@ jobs:
 
           # Buildozer launches main.py; Tuxemon's desktop entry point is run_tuxemon.py.
           Path("main.py").write_text(
-              "from run_tuxemon import launch_game\\n\\n"
-              "if __name__ == '__main__':\\n"
-              "    launch_game([])\\n",
+              "from run_tuxemon import launch_game\n\n"
+              "if __name__ == '__main__':\n"
+              "    launch_game([])\n",
               encoding="utf-8",
           )
 
