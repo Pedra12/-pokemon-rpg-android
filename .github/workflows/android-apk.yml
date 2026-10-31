@@ -41,6 +41,7 @@ jobs:
         run: |
           git clone https://github.com/kivy/python-for-android.git "$GITHUB_WORKSPACE/python-for-android"
           git -C "$GITHUB_WORKSPACE/python-for-android" checkout 58d21141f17c889bf8585f5665921d72028f8831
+          python -m pip install -e "$GITHUB_WORKSPACE/python-for-android"
 
       - name: Install Android build dependencies
         run: |
