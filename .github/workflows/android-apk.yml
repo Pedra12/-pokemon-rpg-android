@@ -34,6 +34,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Rust for the Pydantic Android extension
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Pin python-for-android to the 2026.05.09 release
+        run: |
+          git clone https://github.com/kivy/python-for-android.git "$GITHUB_WORKSPACE/python-for-android"
+          git -C "$GITHUB_WORKSPACE/python-for-android" checkout 58d21141f17c889bf8585f5665921d72028f8831
+
       - name: Install Android build dependencies
         run: |
           sudo apt-get update
@@ -75,38 +83,130 @@ jobs:
           build = build.replace("android.skip_update = True", "android.skip_update = False")
           spec.write_text(build)
 
-          # Adapt the original Pygame recipe to modern python-for-android/NDK.
-          recipe = Path("buildconfig/buildozer/recipes/pygame/__init__.py")
-          source = recipe.read_text()
-          source = source.replace(
-              'join(self.ctx.ndk_platform, "usr")',
-              'join(self.ctx.ndk.sysroot, "usr")',
-          )
-          source = source.replace(
-              'join(self.ctx.ndk_platform, "usr", "lib")',
-              'join(self.ctx.ndk.sysroot, "usr", "lib")',
-          )
-          # SDL2_image installs its public headers in an include/ subfolder
-          # on current python-for-android; the legacy recipe only adds its root.
-          source = source.replace(
-              'sdl_image_includes="-I"\n                + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image"),',
-              'sdl_image_includes="-I"\n                + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image")\n'
-              '                + " -I" + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image", "include"),',
-          )
-          if "self.ctx.ndk_platform" in source:
-              raise SystemExit("Legacy ndk_platform reference remains in Pygame recipe")
-          if 'join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image", "include")' not in source:
-              raise SystemExit("SDL2_image include-directory patch was not applied")
-          recipe.write_text(source)
-          PY
+          # The Android port must use pygame-ce, not the legacy pygame recipe.
+          recipe_dir = Path("buildconfig/buildozer/recipes/pygame-ce")
+          recipe_dir.mkdir(parents=True, exist_ok=True)
+          recipe = recipe_dir / "__init__.py"
+          recipe.write_text(r'''from os.path import join
 
-      - name: Test native touch controls
+from pythonforandroid.recipe import CompiledComponentsPythonRecipe
+from pythonforandroid.toolchain import current_directory
+
+
+class PygameCeRecipe(CompiledComponentsPythonRecipe):
+    version = "2.4.0"
+    url = "https://github.com/pygame-community/pygame-ce/archive/{version}.tar.gz"
+    site_packages_name = "pygame-ce"
+    name = "pygame-ce"
+    depends = [
+        "sdl2", "sdl2_image", "sdl2_mixer", "sdl2_ttf",
+        "setuptools", "jpeg", "png",
+    ]
+    call_hostpython_via_targetpython = False
+    install_in_hostpython = False
+
+    def prebuild_arch(self, arch):
+        super().prebuild_arch(arch)
+        with current_directory(self.get_build_dir(arch.arch)):
+            setup_template = open(
+                join("buildconfig", "Setup.Android.SDL2.in")
+            ).read()
+            env = self.get_recipe_env(arch)
+            env["ANDROID_ROOT"] = join(self.ctx.ndk.sysroot, "usr")
+
+            png = self.get_recipe("png", self.ctx)
+            png_lib_dir = join(png.get_build_dir(arch.arch), ".libs")
+            png_inc_dir = png.get_build_dir(arch.arch)
+
+            jpeg = self.get_recipe("jpeg", self.ctx)
+            jpeg_inc_dir = jpeg_lib_dir = jpeg.get_build_dir(arch.arch)
+
+            image_includes = ""
+            image_recipe = self.get_recipe("sdl2_image", self.ctx)
+            for include_dir in image_recipe.get_include_dirs(arch):
+                image_includes += f"-I{include_dir} "
+
+            mixer_includes = ""
+            mixer_recipe = self.get_recipe("sdl2_mixer", self.ctx)
+            for include_dir in mixer_recipe.get_include_dirs(arch):
+                mixer_includes += f"-I{include_dir} "
+
+            setup_file = setup_template.format(
+                sdl_includes=(
+                    " -I" + join(self.ctx.bootstrap.build_dir, "jni", "SDL", "include")
+                    + " -L" + join(self.ctx.bootstrap.build_dir, "libs", str(arch))
+                    + " -L" + png_lib_dir
+                    + " -L" + jpeg_lib_dir
+                    + " -L" + arch.ndk_lib_dir_versioned
+                ),
+                sdl_ttf_includes="-I" + join(
+                    self.ctx.bootstrap.build_dir, "jni", "SDL2_ttf"
+                ),
+                sdl_image_includes=image_includes,
+                sdl_mixer_includes=mixer_includes,
+                jpeg_includes="-I" + jpeg_inc_dir,
+                png_includes="-I" + png_inc_dir,
+                freetype_includes="",
+            )
+            open("Setup", "w").write(setup_file)
+
+    def get_recipe_env(self, arch):
+        env = super().get_recipe_env(arch)
+        env["USE_SDL2"] = "1"
+        env["PYGAME_CROSS_COMPILE"] = "TRUE"
+        env["PYGAME_ANDROID"] = "TRUE"
+        return env
+
+
+recipe = PygameCeRecipe()
+''')
+
+          # Use the exact python-for-android checkout that contains the
+          # pydantic-core Rust recipe required by Tuxemon's Pydantic config.
+          spec = Path("buildozer.spec")
+          build = spec.read_text()
+          build = build.replace(
+              "requirements = sdl2,openssl,libffi,python3,setuptools,pygame,babel,pytmx,pyscroll,natsort,tuxemon",
+              "requirements = sdl2,openssl,libffi,python3,setuptools,pygame-ce,babel,websockets,pillow,packaging,pytmx,pyscroll,natsort,PyYAML,requests,prompt_toolkit,pydantic==2.12.4,pydantic-core,pygame-menu-ce,tuxemon",
+          )
+          build = build.replace("p4a.branch = master", "p4a.source_dir = ../python-for-android")
+          required = [
+              "pygame-ce", "pydantic==2.12.4", "pydantic-core",
+              "pillow", "pygame-menu-ce", "PyYAML",
+          ]
+          requirements_line = next(
+              (line for line in build.splitlines() if line.startswith("requirements = ")),
+              "",
+          )
+          if not requirements_line or any(name not in requirements_line for name in required):
+              raise SystemExit("Android dependency list is incomplete")
+          if "p4a.source_dir = ../python-for-android" not in build:
+              raise SystemExit("Pinned python-for-android source directory was not configured")
+          spec.write_text(build)
+
+
+      - name: Test native touch controls and runtime dependencies
         working-directory: Tuxemon
         env:
           SDL_VIDEODRIVER: dummy
         run: |
           python -m pip install -e ".[test]"
           python -m pytest -q tests/tuxemon/test_pygame_touch_overlay_input.py
+          python - <<'PY'
+          import babel
+          import natsort
+          import PIL
+          import prompt_toolkit
+          import pygame
+          import pygame_menu
+          import pydantic
+          import pytmx
+          import pyscroll
+          import requests
+          import websockets
+          import yaml
+          print("All required game modules imported successfully on the CI host.")
+          PY
 
       - name: Build Android APK
         working-directory: Tuxemon
