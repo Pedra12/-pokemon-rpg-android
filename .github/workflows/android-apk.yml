@@ -86,8 +86,17 @@ jobs:
               'join(self.ctx.ndk_platform, "usr", "lib")',
               'join(self.ctx.ndk.sysroot, "usr", "lib")',
           )
+          # SDL2_image installs its public headers in an include/ subfolder
+          # on current python-for-android; the legacy recipe only adds its root.
+          source = source.replace(
+              'sdl_image_includes="-I"\n                + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image"),',
+              'sdl_image_includes="-I"\n                + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image")\n'
+              '                + " -I" + join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image", "include"),',
+          )
           if "self.ctx.ndk_platform" in source:
               raise SystemExit("Legacy ndk_platform reference remains in Pygame recipe")
+          if 'join(self.ctx.bootstrap.build_dir, "jni", "SDL2_image", "include")' not in source:
+              raise SystemExit("SDL2_image include-directory patch was not applied")
           recipe.write_text(source)
           PY
 
@@ -106,10 +115,10 @@ jobs:
         run: buildozer -v android debug
 
       - name: Upload APK
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: tuxemon-android-apk
           path: Tuxemon/bin/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
